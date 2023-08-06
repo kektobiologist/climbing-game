@@ -1,0 +1,108 @@
+
+
+
+/* style for game-canvas */
+/* fixed position at top left */
+/* size is full screen - use em and vh or whatever */
+/* z value -1 so its behind everything */
+/* set image smoothing to false */
+#game-canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    /* width: 100%; */
+    height: 100%;
+    z-index: -1;
+    image-rendering: pixelated;
+    image-rendering: -moz-crisp-edges;
+    image-rendering: crisp-edges;
+
+}
+
+#leaderboard-form {
+  position: absolute;
+  /* middle of the screen */
+  top: 50%;
+  left: 50%;
+  z-index: 2;
+}
+
+@keyframes example {
+  from {stroke-width: 0; stroke: red;}
+  to {stroke-width: 20; stroke: red;}
+}
+
+.is-done {
+  animation-name: example;
+  animation-duration: 0.5s;
+  stroke-width: 20;
+  stroke: red
+}
+
+#game-svg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: -1;
+  image-rendering: pixelated;
+  image-rendering: -moz-crisp-edges;
+  image-rendering: crisp-edges;
+
+}
+
+body {
+    background-color: #000;
+    font-family: 'Montserrat', sans-serif;
+    color: #fff;
+    margin: 0;
+  }
+  
+  .App {
+    display: flex;
+    flex-direction: row;
+    font-family: 'Montserrat', sans-serif;
+    color: #fff;
+    height: 100vh;
+    overflow: hidden;
+  }
+  
+  .sidebar {
+    width: 150px;
+    background-color: #161616;
+    overflow: auto;
+    padding: 20px;
+  }
+  
+  .sidebar-title {
+    margin-bottom: 20px;
+    text-transform: uppercase;
+    color: #fff;
+  }
+  
+  .sidebar-links {
+    list-style: none;
+    padding: 0;
+  }
+  
+  .sidebar-links li {
+    margin-bottom: 10px;
+  }
+  
+  .sidebar-links li a {
+    color: #fff;
+    text-decoration: none;
+  }
+  
+  .sidebar-links li a:hover {
+    color: #007bff;
+  }
+  
+  .MainContent {
+    flex-grow: 1; /* This will allow the main content to take the remaining space */
+    overflow: auto;
+    padding: 20px;
+    background-color: #000; 
+    z-index: -2;
+  }

@@ -1,0 +1,199 @@
+from dbr import *
+import cv2
+import numpy as np
+# create mutex
+import threading
+mutex = threading.Lock()
+points_list = []
+clicked_pixel_location = None
+def text_results_callback_func(frame_id, t_results, user_data):
+        global points_list
+        print(frame_id)
+        for result in t_results:
+            text_result = TextResult(result)
+            print("Barcode Format : ")
+            print(text_result.barcode_format_string)
+            print("Barcode Text : ")
+            print(text_result.barcode_text)
+            print("Localization Points : ")
+            print(text_result.localization_result.localization_points)
+            # lock the mutex
+            mutex.acquire()
+            points_list = text_result.localization_result.localization_points
+            # release the mutex
+            mutex.release()
+            print("Exception : ")
+            print(text_result.exception)
+            print("-------------")
+
+def intermediate_results_callback_func(frame_id, i_results, user_data):
+        print(frame_id)
+        for result in i_results:
+            intermediate_result = IntermediateResult(result)
+            print('Intermediate Result data type : {0}'.format(intermediate_result.result_type))
+            print('Intermediate Result data : {0}'.format(intermediate_result.results))
+            print("-------------")
+
+def error_callback_func(frame_id, error_code, user_data):
+        print(frame_id)
+        error_msg = user_data.get_error_string(error_code)
+        print('Error : {0} ; {1}'.format(error_code, error_msg))
+
+
+
+def calc_reference_points():
+    gridCount = 23
+    imageInPixels = 1012
+    pixelsPerGrid = imageInPixels / gridCount
+    marginInPixels = pixelsPerGrid
+    xOffsetInPixels = 500 + marginInPixels
+    yOffsetInPixels = 0 + marginInPixels
+    points = [(0,0), (1, 0), (1, 1), (0, 1)]
+    scalingFactor = (imageInPixels - 2 * marginInPixels)
+    # scale each point by scalingFactor
+    points = np.array(points) * scalingFactor
+    # offset each point by xOffsetInPixels and yOffsetInPixels
+    points = points + np.array([xOffsetInPixels, yOffsetInPixels])
+    return points
+ 
+def decode_video():
+    video_width = 0
+    video_height = 0
+    
+    # a. Decode video from camera
+    vc = cv2.VideoCapture(0)
+    # # b. Decode video file
+    # video_file = "Put your video file path here."
+    # vc = cv2.VideoCapture(video_file)
+    
+    video_width  = int(vc.get(cv2.CAP_PROP_FRAME_WIDTH))
+    video_height = int(vc.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    vc.set(3, video_width) #set width
+    vc.set(4, video_height) #set height
+
+    stride = 0
+    if vc.isOpened():  
+        rval, frame = vc.read()
+        # convert to grayscale
+        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        stride = frame.strides[0]
+    else:
+        return
+
+    windowName = "Video Barcode Reader"
+
+    reader = BarcodeReader()
+
+    parameters = reader.init_frame_decoding_parameters()
+    parameters.max_queue_length = 30
+    parameters.max_result_queue_length = 30
+    parameters.width = video_width
+    parameters.height = video_height
+    parameters.stride = stride
+    parameters.image_pixel_format = EnumImagePixelFormat.IPF_GRAYSCALED
+    parameters.region_top = 0
+    parameters.region_bottom = 100
+    parameters.region_left = 0
+    parameters.region_right = 100
+    parameters.region_measured_by_percentage = 1
+    parameters.threshold = 0.01
+    parameters.fps = 0
+    parameters.auto_filter = 1
+
+    # start video decoding. The callback function will receive the recognized barcodes.
+    reader.start_video_mode(parameters, text_results_callback_func)
+
+    # # start video decoding. Pass three callbacks at the same time.
+    # reader.start_video_mode(parameters, text_results_callback_func, "", intermediate_results_callback_func, error_callback_func, reader)
+    
+    rval, frame= vc.read()
+    cv2.namedWindow(windowName)
+    def mouse_cb(event, x, y, flags, param):
+        global clicked_pixel_location
+        if event == cv2.EVENT_LBUTTONUP:
+            clicked_pixel_location = (x, y)
+        if event == cv2.EVENT_RBUTTONUP:
+            clicked_pixel_location = None
+
+    cv2.setMouseCallback(windowName, mouse_cb)
+
+    referencePoints = calc_reference_points()
+    while True:
+        # draw the points in the frame
+        # lock the mutex
+        global points_list, clicked_pixel_location
+        mutex.acquire()
+        for point in points_list:
+            cv2.circle(frame, (int(point[0]), int(point[1])), 2, (0, 0, 255), -1)
+        # release the mutex
+        mutex.release()
+        cv2.imshow(windowName, frame)
+        rval, frame = vc.read()
+        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        if clicked_pixel_location is not None:
+            # print("thresholding!")
+            # binary threshold around this value. assume its the black value, so threshold at 2 vals above
+            clicked_pixel_value = frame[clicked_pixel_location[1], clicked_pixel_location[0]]
+            frame = cv2.threshold(frame, clicked_pixel_value -3, 255, cv2.THRESH_BINARY)[1]
+
+
+        if len(points_list) == 4:
+            # compute affine transform from points to referencePoints
+            M = cv2.estimateAffinePartial2D(referencePoints, np.array(points_list) )[0]
+            # print(M)
+            circlePoint = [500,100]
+            radius = 40
+            # project the circle point using the affine transform matrix
+            circlePoint = cv2.transform(np.array([[circlePoint]]), M)[0][0]
+            # calculate the scale value of the transform M
+            sX = np.sqrt(M[0][0]**2 + M[0][1]**2)
+            sY = np.sqrt(M[1][0]**2 + M[1][1]**2)
+            # scale the radius
+            radius = radius * (sX + sY) / 2
+            # draw the circlePoint
+            cv2.circle(frame, (int(circlePoint[0]), int(circlePoint[1])), int(radius), (0, 0, 255), 2)
+
+        if rval == False:
+            break
+        
+        try:
+            # append frame to video buffer cyclically
+            ret = reader.append_video_frame(frame)
+        except:
+            pass
+        
+        # 'ESC' for quit
+        key = cv2.waitKey(1)
+        if key == 27:
+            print("Not Saving!")
+            break
+
+        if key == 13:
+            print("saving")
+            # save the matrix M to a file
+            np.savetxt("M.txt", M)
+            break
+
+    reader.stop_video_mode()
+    cv2.destroyWindow(windowName)
+
+
+if __name__ == "__main__":
+
+    print("-------------------start------------------------")
+
+    try:
+        # Initialize license.
+        # The string "DLS2eyJvcmdhbml6YXRpb25JRCI6IjIwMDAwMSJ9" here is a free public trial license. Note that network connection is required for this license to work.
+        # You can also request a 30-day trial license in the customer portal: https://www.dynamsoft.com/customer/license/trialLicense?product=dbr&utm_source=samples&package=python
+        error = BarcodeReader.init_license("DLS2eyJvcmdhbml6YXRpb25JRCI6IjIwMDAwMSJ9")
+        if error[0] != EnumErrorCode.DBR_OK:
+            print("License error: "+ error[1])
+
+        # Decode video from file or camera
+        decode_video()
+
+    except BarcodeReaderError as bre:
+        print(bre)
+
+    print("-------------------over------------------------")
